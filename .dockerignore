@@ -1,0 +1,31 @@
+# --- Control de versiones ---
+.git
+.gitignore
+
+# --- Secretos y configuración local: NUNCA dentro de la imagen ---
+.env
+.env.*
+*.pem
+*.key
+
+# --- Material de la práctica que no es la aplicación ---
+# (incluye recursos/notas/sin-revisar: el Dockerfile malo jamás debe entrar)
+recursos/
+sin-revisar/
+Práctica*.docx
+prompts.md
+README.md
+
+# --- Artefactos de Python / basura del host ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+
+# --- Ficheros que la imagen no necesita ---
+Dockerfile
+.dockerignore
+docker-compose.yml

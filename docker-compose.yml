@@ -1,0 +1,70 @@
+# =============================================================================
+# docker-compose.yml — Tablón de notas (Flask + Redis)
+# Dos servicios: web (la app) y cache (Redis con persistencia).
+# Todos los requisitos pedidos por escrito van comentados aquí.
+# =============================================================================
+
+services:
+
+  # -----------------------------------------------------------------------------
+  # web: la aplicación Flask, construida desde el Dockerfile de la raíz.
+  # -----------------------------------------------------------------------------
+  web:
+    build:
+      context: .            # contexto = raíz del proyecto (ahí están Dockerfile, app.py, templates/)
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"         # publica 8000 al exterior
+    environment:
+      # Las variables van AQUÍ, en el compose, NUNCA dentro de la imagen.
+      # REDIS_URL apunta al nombre del servicio "cache" dentro de la red del compose
+      # (no a localhost: en compose, localhost sería el propio contenedor web).
+      - REDIS_URL=redis://cache:6379
+      - TITULO_APP=Tablón de notas
+    depends_on:
+      cache:
+        # web espera a que cache esté SANO (healthcheck en verde) antes de arrancar.
+        condition: service_healthy
+    # El HEALTHCHECK real está definido en el Dockerfile (contra /salud);
+    # compose lo hereda, no hace falta duplicarlo aquí.
+
+  # -----------------------------------------------------------------------------
+  # cache: Redis con persistencia. NO publica ningún puerto al exterior.
+  # -----------------------------------------------------------------------------
+  cache:
+    image: redis:7-alpine    # imagen ligera y estable (no "latest", para reproducibilidad)
+    # SIN bloque "ports:" a propósito → Redis queda Aislado en la red interna del
+    # compose; solo "web" puede alcanzarlo por el nombre "cache". No sale a internet.
+    command: redis-server --appendonly yes   # persistencia (AOF): sobrevive a reinicios
+    volumes:
+      # Volumen CON NOMBRE (notas_datos) montado en /data → las notas persisten
+      # aunque se destruyan los contenedores. Solo desaparece con `down -v`.
+      - notas_datos:/data
+    healthcheck:
+      # Redis sano = responde al PING. Usamos redis-cli de la propia imagen.
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # -----------------------------------------------------------------------------
+  # nginx: proxy delante de gunicorn (ejercicio de ampliación / reto).
+  # Escucha en el 80 del contenedor (publicado como 8080 en el host) y reenvía
+  # todo a http://web:8000. No guarda estado; solo redirige.
+  # -----------------------------------------------------------------------------
+  nginx:
+    image: nginx:1.27-alpine
+    ports:
+      - "8080:80"            # 8080 en el host → 80 del proxy (gunicorn sigue en 8000)
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro   # configuración del proxy
+    depends_on:
+      - web                  # nginx depende de que exista gunicorn (web)
+    restart: always
+
+# -----------------------------------------------------------------------------
+# Volumen con nombre declarado a nivel raíz (fuera de los servicios).
+# -----------------------------------------------------------------------------
+volumes:
+  notas_datos:

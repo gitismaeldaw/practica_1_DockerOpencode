@@ -1,0 +1,37 @@
+# ============ ETAPA 1: builder (solo instala dependencias) ============
+FROM python:3.12-slim AS builder
+
+WORKDIR /build
+COPY requirements.txt .
+
+# Instala las dependencias en un prefijo aislado (/install), sin caché.
+# Aquí se quedan los restos de pip; NO pasan a la imagen final.
+RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
+
+# ============ ETAPA 2: final (solo runtime) ============
+FROM python:3.12-slim
+
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+WORKDIR /app
+
+# Copiar ÚNICAMENTE los paquetes ya instalados de la etapa anterior.
+# No se copia el requirements.txt ni los restos de pip.
+COPY --from=builder /install /usr/local
+
+# Copiar solo el código de la aplicación
+COPY app.py .
+COPY templates/ ./templates/
+
+# Usuario sin privilegios
+RUN useradd --create-home --system --shell /usr/sbin/nologin notas \
+    && chown -R notas:notas /app
+USER notas
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["python", "-c", "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/salud', timeout=4).status == 200 else 1)"]
+
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--access-logfile", "-", "app:app"]
